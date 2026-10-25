@@ -1,0 +1,29 @@
+# Environments
+.env
+.env.local
+.env.*.local
+*.env
+
+# Dependencies & Build Artefacts
+node_modules/
+dist/
+dist-ssr/
+*.local
+target/
+*.class
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor directories
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
