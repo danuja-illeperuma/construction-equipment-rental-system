@@ -196,7 +196,7 @@ public class CustomerRepository {
                 email,
                 password_hash,
                 address,
-                1 AS is_active,
+                is_active,
                 created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, TRUE, NOW())
             """;
