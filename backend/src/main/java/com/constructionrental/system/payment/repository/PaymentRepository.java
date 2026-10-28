@@ -24,11 +24,12 @@ public class PaymentRepository {
 
     public Optional<PaymentResponse> findById(Long id) {
         String sql = """
-            SELECT p.payment_id, p.rental_id, r.customer_id, r.booking_reference, p.amount,
+            SELECT p.payment_id, p.rental_id, r.customer_id, c.name AS customer_name, r.booking_reference, p.amount,
                    p.payment_method, p.payment_status, p.transaction_reference,
                    p.paid_at, p.created_at, r.status AS rental_status
             FROM payments p
             JOIN rentals r ON p.rental_id = r.rental_id
+            LEFT JOIN customers c ON r.customer_id = c.customer_id
             WHERE p.payment_id = ?
             """;
         try {
@@ -40,11 +41,12 @@ public class PaymentRepository {
 
     public Optional<PaymentResponse> findByRentalId(Long rentalId) {
         String sql = """
-            SELECT p.payment_id, p.rental_id, r.customer_id, r.booking_reference, p.amount,
+            SELECT p.payment_id, p.rental_id, r.customer_id, c.name AS customer_name, r.booking_reference, p.amount,
                    p.payment_method, p.payment_status, p.transaction_reference,
                    p.paid_at, p.created_at, r.status AS rental_status
             FROM payments p
             JOIN rentals r ON p.rental_id = r.rental_id
+            LEFT JOIN customers c ON r.customer_id = c.customer_id
             WHERE p.rental_id = ?
             """;
         try {
@@ -56,11 +58,12 @@ public class PaymentRepository {
 
     public Optional<PaymentResponse> findByBookingReference(String bookingReference) {
         String sql = """
-            SELECT p.payment_id, p.rental_id, r.customer_id, r.booking_reference, p.amount,
+            SELECT p.payment_id, p.rental_id, r.customer_id, c.name AS customer_name, r.booking_reference, p.amount,
                    p.payment_method, p.payment_status, p.transaction_reference,
                    p.paid_at, p.created_at, r.status AS rental_status
             FROM payments p
             JOIN rentals r ON p.rental_id = r.rental_id
+            LEFT JOIN customers c ON r.customer_id = c.customer_id
             WHERE r.booking_reference = ?
             """;
         try {
@@ -73,22 +76,24 @@ public class PaymentRepository {
     public List<PaymentResponse> findAll(String status) {
         if (status != null && !status.isBlank()) {
             String sql = """
-                SELECT p.payment_id, p.rental_id, r.customer_id, r.booking_reference, p.amount,
+                SELECT p.payment_id, p.rental_id, r.customer_id, c.name AS customer_name, r.booking_reference, p.amount,
                        p.payment_method, p.payment_status, p.transaction_reference,
                        p.paid_at, p.created_at, r.status AS rental_status
                 FROM payments p
                 JOIN rentals r ON p.rental_id = r.rental_id
+                LEFT JOIN customers c ON r.customer_id = c.customer_id
                 WHERE p.payment_status = ?
                 ORDER BY p.created_at DESC
                 """;
             return jdbcTemplate.query(sql, paymentRowMapper, status.toUpperCase());
         }
         String sql = """
-            SELECT p.payment_id, p.rental_id, r.customer_id, r.booking_reference, p.amount,
+            SELECT p.payment_id, p.rental_id, r.customer_id, c.name AS customer_name, r.booking_reference, p.amount,
                    p.payment_method, p.payment_status, p.transaction_reference,
                    p.paid_at, p.created_at, r.status AS rental_status
             FROM payments p
             JOIN rentals r ON p.rental_id = r.rental_id
+            LEFT JOIN customers c ON r.customer_id = c.customer_id
             ORDER BY p.created_at DESC
             """;
         return jdbcTemplate.query(sql, paymentRowMapper);
@@ -96,11 +101,12 @@ public class PaymentRepository {
 
     public List<PaymentResponse> findByCustomerId(Long customerId) {
         String sql = """
-            SELECT p.payment_id, p.rental_id, r.customer_id, r.booking_reference, p.amount,
+            SELECT p.payment_id, p.rental_id, r.customer_id, c.name AS customer_name, r.booking_reference, p.amount,
                    p.payment_method, p.payment_status, p.transaction_reference,
                    p.paid_at, p.created_at, r.status AS rental_status
             FROM payments p
             JOIN rentals r ON p.rental_id = r.rental_id
+            LEFT JOIN customers c ON r.customer_id = c.customer_id
             WHERE r.customer_id = ?
             ORDER BY p.created_at DESC
             """;

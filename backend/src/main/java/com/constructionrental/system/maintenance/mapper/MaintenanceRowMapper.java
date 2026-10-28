@@ -65,7 +65,7 @@ public class MaintenanceRowMapper implements RowMapper<MaintenanceResponse> {
             paidAt = rs.getTimestamp("paid_at");
         } catch (SQLException ignored) {}
 
-        return new MaintenanceResponse(
+        MaintenanceResponse response = new MaintenanceResponse(
                 rs.getLong("maintenance_id"),
                 rs.getLong("equipment_id"),
                 equipmentCode,
@@ -86,5 +86,11 @@ public class MaintenanceRowMapper implements RowMapper<MaintenanceResponse> {
                 isPaid,
                 paidAt != null ? paidAt.toLocalDateTime() : null
         );
+
+        try {
+            response.setEquipmentStatus(rs.getString("equipment_status"));
+        } catch (SQLException ignored) {}
+
+        return response;
     }
 }

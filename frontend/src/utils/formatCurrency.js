@@ -16,4 +16,17 @@ export const formatCurrency = (amount) => {
   }).format(num);
 };
 
+export const formatCompactRate = (amount) => {
+  if (amount === null || amount === undefined || isNaN(amount)) {
+    return 'LKR 0';
+  }
+  const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+  return new Intl.NumberFormat('en-LK', {
+    style: 'currency',
+    currency: 'LKR',
+    minimumFractionDigits: num % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(num);
+};
+
 export default formatCurrency;

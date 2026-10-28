@@ -35,7 +35,15 @@ export const PaymentList = () => {
   const columns = [
     { header: 'Payment ID', accessor: 'paymentId' },
     { header: 'Booking Ref', accessor: 'bookingReference' },
-    { header: 'Customer', accessor: 'customerName' },
+    {
+      header: 'Customer',
+      accessor: 'customerName',
+      render: (row) => (
+        <span className="font-medium text-slate-900">
+          {row.customerName || (row.customerId ? `Customer #${row.customerId}` : '—')}
+        </span>
+      ),
+    },
     {
       header: 'Amount',
       render: (row) => (

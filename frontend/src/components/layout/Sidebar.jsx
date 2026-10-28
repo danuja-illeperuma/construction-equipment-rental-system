@@ -10,6 +10,7 @@ import {
   RotateCcw,
   AlertTriangle,
   Wrench,
+  CalendarClock,
   BarChart3,
   Users,
   ShieldAlert,
@@ -67,6 +68,12 @@ export const Sidebar = ({ onClose }) => {
       to: '/maintenance',
       label: 'Maintenance',
       icon: Wrench,
+      roles: ['STAFF', 'ADMIN'],
+    },
+    {
+      to: '/maintenance/schedule',
+      label: 'Service Schedule',
+      icon: CalendarClock,
       roles: ['STAFF', 'ADMIN'],
     },
     {

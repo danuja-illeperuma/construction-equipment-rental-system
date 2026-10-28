@@ -82,6 +82,7 @@ export const UsersList = () => {
         address: c.address,
         isActive: c.isActive,
         createdAt: c.createdAt,
+        totalBookings: c.totalBookings,
         userCategory: 'CUSTOMER',
       }));
 
@@ -103,6 +104,16 @@ export const UsersList = () => {
         const res = await authApi.getUserById(row.userId);
         if (res.success && res.data) {
           setSelectedUser({ ...res.data, userCategory: 'INTERNAL' });
+          return;
+        }
+      } catch (err) {
+        // Fallback to row object
+      }
+    } else if (row.userCategory === 'CUSTOMER') {
+      try {
+        const res = await customerApi.getById(row.userId);
+        if (res.success && res.data) {
+          setSelectedUser({ ...res.data, role: 'CUSTOMER', userId: res.data.customerId, userCategory: 'CUSTOMER' });
           return;
         }
       } catch (err) {
@@ -516,6 +527,15 @@ export const UsersList = () => {
                 <div className="flex justify-between pt-2">
                   <span className="text-slate-500 font-medium">Registered Address</span>
                   <span className="text-slate-800 text-right max-w-xs">{selectedUser.address}</span>
+                </div>
+              )}
+
+              {selectedUser.role === 'CUSTOMER' && (
+                <div className="flex justify-between pt-2">
+                  <span className="text-slate-500 font-medium">Total Valid Bookings</span>
+                  <span className="font-bold text-sky-800 bg-sky-50 px-2.5 py-0.5 rounded font-mono text-xs border border-sky-200">
+                    {selectedUser.totalBookings ?? 0} bookings
+                  </span>
                 </div>
               )}
 

@@ -12,6 +12,7 @@ import { Input } from '../../../components/common/Input';
 import { Select } from '../../../components/common/Select';
 import { StatusBadge } from '../../../components/common/StatusBadge';
 import { ConfirmDialog } from '../../../components/common/ConfirmDialog';
+import { ActiveMaintenanceSection } from '../components/ActiveMaintenanceSection';
 import { Wrench, Plus, CheckCircle2, DollarSign, UserCheck, Clock, AlertTriangle } from 'lucide-react';
 
 export const MaintenanceList = () => {
@@ -46,8 +47,7 @@ export const MaintenanceList = () => {
     maintenanceType: 'ROUTINE',
     description: '',
     maintenanceCost: '0.00',
-    maintenanceDate: new Date().toISOString().split('T')[0],
-    nextMaintenanceDate: '',
+    maintenanceDate: getTomorrowStr(),
     notes: '',
   });
 
@@ -84,8 +84,8 @@ export const MaintenanceList = () => {
       error('Please select equipment');
       return;
     }
-    if (form.nextMaintenanceDate && form.nextMaintenanceDate <= todayStr) {
-      error('Invalid Next Due Date: Please select a date after today. Dates before or on today are not allowed.');
+    if (form.maintenanceDate <= todayStr) {
+      error('Scheduled service date must be in the future (tomorrow or later). Routine maintenance is scheduled in advance so MySQL Event evt_daily_maintenance_status_check activates it at 02:00 AM on the scheduled date.');
       return;
     }
     setSubmitting(true);
@@ -97,10 +97,9 @@ export const MaintenanceList = () => {
         description: form.description,
         maintenanceCost: Number(form.maintenanceCost),
         maintenanceDate: form.maintenanceDate,
-        nextMaintenanceDate: form.nextMaintenanceDate || null,
         notes: form.notes,
       });
-      success('Maintenance scheduled! Equipment status updated to MAINTENANCE.');
+      success('Maintenance scheduled! Equipment remains AVAILABLE until the scheduled date when the 02:00 AM automated event activates it.');
       setModalOpen(false);
       setForm({
         equipmentId: '',
@@ -108,8 +107,7 @@ export const MaintenanceList = () => {
         maintenanceType: 'ROUTINE',
         description: '',
         maintenanceCost: '0.00',
-        maintenanceDate: new Date().toISOString().split('T')[0],
-        nextMaintenanceDate: '',
+        maintenanceDate: getTomorrowStr(),
         notes: '',
       });
       fetchData();
@@ -210,24 +208,26 @@ export const MaintenanceList = () => {
             <span className="text-3xs text-slate-500 font-mono">{row.customerPhone || `Cust #${row.customerId}`}</span>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => handleOpenPaymentModal(row, 'assign')}
-            className="text-3xs font-semibold text-advantis-600 hover:text-advantis-800 underline decoration-dashed cursor-pointer"
-            title="Click to bill this repair to a customer"
-          >
-            + Bill to Customer
-          </button>
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-2xs font-bold bg-blue-50 text-[#2473B5] border border-[#A4D0F2]">
+            🏢 Company Fleet
+          </span>
         ),
     },
     { header: 'Cost', render: (row) => formatCurrency(row.maintenanceCost) },
     {
       header: 'Payment Status',
       render: (row) => {
+        if (!row.customerId) {
+          return (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-2xs font-bold bg-blue-50 text-[#2473B5] border border-[#A4D0F2]">
+              🏢 Handled by Company
+            </span>
+          );
+        }
         const isPaid = Boolean(row.isPaid);
         return isPaid ? (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-2xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <CheckCircle2 className="h-3 w-3" /> Paid
+            <CheckCircle2 className="h-3 w-3" /> Paid (Customer)
           </span>
         ) : (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-2xs font-bold bg-rose-50 text-rose-700 border border-rose-200 animate-pulse">
@@ -261,7 +261,7 @@ export const MaintenanceList = () => {
                 Complete
               </Button>
             )}
-            {!isPaid ? (
+            {row.customerId && !isPaid && (
               <Button
                 variant="primary"
                 size="sm"
@@ -272,7 +272,8 @@ export const MaintenanceList = () => {
               >
                 Mark Paid
               </Button>
-            ) : (
+            )}
+            {row.customerId && isPaid && (
               <Button
                 variant="outline"
                 size="sm"
@@ -311,6 +312,25 @@ export const MaintenanceList = () => {
           </Button>
         </div>
       </PageHeader>
+
+      {/* Active Workshop Bay Component */}
+      <ActiveMaintenanceSection
+        records={records}
+        onComplete={(item) => {
+          setSelectedRecordId(item.maintenanceId);
+          setCompleteModalOpen(true);
+        }}
+        loading={loading}
+      />
+
+      <div className="bg-white rounded-xl border border-[#DFE8F0] p-4 shadow-xs mb-4">
+        <h3 className="text-sm font-heading font-bold text-slate-800">
+          All Service Records & Work Orders Archive
+        </h3>
+        <p className="text-xs text-slate-500">
+          Historical log of routine servicing, contractor repairs, and completed overhauls
+        </p>
+      </div>
 
       <DataTable columns={columns} data={records} loading={loading} />
 
@@ -372,45 +392,22 @@ export const MaintenanceList = () => {
             required
           />
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input
-              label="Service Date"
-              type="date"
-              value={form.maintenanceDate}
-              onChange={(e) => setForm({ ...form, maintenanceDate: e.target.value })}
-              required
-            />
-            <Input
-              label="Next Due Date"
-              type="date"
-              min={minNextDueDate}
-              value={form.nextMaintenanceDate}
-              onChange={(e) => {
-                const val = e.target.value;
-                if (val && val <= todayStr) {
-                  error('Invalid Date: Next due date must be after today. Please select only future dates.');
-                }
-                setForm({ ...form, nextMaintenanceDate: val });
-              }}
-              error={
-                form.nextMaintenanceDate && form.nextMaintenanceDate <= todayStr
-                  ? 'Do not select today or past dates. Only select days after today.'
-                  : null
-              }
-              helperText={
-                !form.nextMaintenanceDate || form.nextMaintenanceDate > todayStr
-                  ? 'Only select days after today for the next scheduled service.'
-                  : null
-              }
-            />
-          </div>
+          <Input
+            label="Service Date"
+            type="date"
+            min={minNextDueDate}
+            value={form.maintenanceDate}
+            onChange={(e) => setForm({ ...form, maintenanceDate: e.target.value })}
+            required
+            helperText="Must be scheduled in advance (tomorrow or later)"
+          />
 
           <div className="flex justify-end gap-3 pt-3">
             <Button variant="outline" type="button" onClick={() => setModalOpen(false)}>
               Cancel
             </Button>
             <Button variant="primary" type="submit" loading={submitting}>
-              Schedule & Set to Maintenance
+              Schedule Service
             </Button>
           </div>
         </form>

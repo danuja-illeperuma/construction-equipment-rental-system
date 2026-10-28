@@ -7,6 +7,7 @@ public class PaymentResponse {
     private Long paymentId;
     private Long rentalId;
     private Long customerId;
+    private String customerName;
     private String bookingReference;
     private BigDecimal amount;
     private String paymentMethod;
@@ -21,21 +22,28 @@ public class PaymentResponse {
     public PaymentResponse(Long paymentId, Long rentalId, String bookingReference, BigDecimal amount,
                            String paymentMethod, String paymentStatus, String transactionReference,
                            LocalDateTime paidAt, LocalDateTime createdAt) {
-        this(paymentId, rentalId, null, bookingReference, amount, paymentMethod, paymentStatus, transactionReference, paidAt, createdAt, null);
+        this(paymentId, rentalId, null, null, bookingReference, amount, paymentMethod, paymentStatus, transactionReference, paidAt, createdAt, null);
     }
 
     public PaymentResponse(Long paymentId, Long rentalId, Long customerId, String bookingReference, BigDecimal amount,
                            String paymentMethod, String paymentStatus, String transactionReference,
                            LocalDateTime paidAt, LocalDateTime createdAt) {
-        this(paymentId, rentalId, customerId, bookingReference, amount, paymentMethod, paymentStatus, transactionReference, paidAt, createdAt, null);
+        this(paymentId, rentalId, customerId, null, bookingReference, amount, paymentMethod, paymentStatus, transactionReference, paidAt, createdAt, null);
     }
 
     public PaymentResponse(Long paymentId, Long rentalId, Long customerId, String bookingReference, BigDecimal amount,
                            String paymentMethod, String paymentStatus, String transactionReference,
                            LocalDateTime paidAt, LocalDateTime createdAt, String rentalStatus) {
+        this(paymentId, rentalId, customerId, null, bookingReference, amount, paymentMethod, paymentStatus, transactionReference, paidAt, createdAt, rentalStatus);
+    }
+
+    public PaymentResponse(Long paymentId, Long rentalId, Long customerId, String customerName, String bookingReference, BigDecimal amount,
+                           String paymentMethod, String paymentStatus, String transactionReference,
+                           LocalDateTime paidAt, LocalDateTime createdAt, String rentalStatus) {
         this.paymentId = paymentId;
         this.rentalId = rentalId;
         this.customerId = customerId;
+        this.customerName = customerName;
         this.bookingReference = bookingReference;
         this.amount = amount;
         this.paymentMethod = paymentMethod;
@@ -44,6 +52,14 @@ public class PaymentResponse {
         this.paidAt = paidAt;
         this.createdAt = createdAt;
         this.rentalStatus = rentalStatus;
+    }
+
+    public String getCustomerName() {
+        return customerName;
+    }
+
+    public void setCustomerName(String customerName) {
+        this.customerName = customerName;
     }
 
     public Long getCustomerId() {

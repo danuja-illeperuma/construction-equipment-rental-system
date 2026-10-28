@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { formatCurrency } from '../../utils/formatCurrency';
+import { formatCurrency, formatCompactRate } from '../../utils/formatCurrency';
 import StatusBadge from '../common/StatusBadge';
 import Button from '../common/Button';
 import { Truck, MapPin } from 'lucide-react';
@@ -59,26 +59,45 @@ export const EquipmentCard = ({ equipment, onSelect }) => {
         </div>
 
         {/* Rate Cards */}
-        <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t border-slate-100">
-          <div className="bg-slate-50/80 p-2 rounded-lg">
-            <span className="block text-2xs font-heading font-bold uppercase text-slate-400">Hourly</span>
-            <span className="text-xs font-heading font-bold text-slate-800">
-              {equipment.hourlyRate ? formatCurrency(equipment.hourlyRate) : '—'}
+        <div className="pt-3 border-t border-slate-100 space-y-2">
+          {/* Featured Daily Rate */}
+          <div className="bg-advantis-50 px-3 py-2 rounded-xl border border-advantis-200 flex items-center justify-between">
+            <span className="text-2xs uppercase font-heading font-extrabold tracking-wider text-advantis-800">
+              Daily Hire
             </span>
+            <div className="text-right min-w-0">
+              <span
+                className="text-sm font-heading font-black text-advantis-900 tabular-nums"
+                title={equipment.dailyRate ? formatCurrency(equipment.dailyRate) : undefined}
+              >
+                {equipment.dailyRate ? formatCompactRate(equipment.dailyRate) : '—'}
+              </span>
+              <span className="text-2xs text-slate-500 font-medium ml-1">/day</span>
+            </div>
           </div>
 
-          <div className="bg-equipment-50 p-2 rounded-lg border border-equipment-200">
-            <span className="block text-2xs font-heading font-bold uppercase text-equipment-800">Daily</span>
-            <span className="text-xs font-heading font-bold text-advantis-900">
-              {equipment.dailyRate ? formatCurrency(equipment.dailyRate) : '—'}
-            </span>
-          </div>
-
-          <div className="bg-slate-50/80 p-2 rounded-lg">
-            <span className="block text-2xs font-heading font-bold uppercase text-slate-400">Monthly</span>
-            <span className="text-xs font-heading font-bold text-slate-800">
-              {equipment.monthlyRate ? formatCurrency(equipment.monthlyRate) : '—'}
-            </span>
+          {/* Secondary Rates (Hourly & Monthly) */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-slate-50/80 px-2.5 py-1.5 rounded-lg border border-slate-200/60 min-w-0">
+              <span className="block text-2xs font-heading font-bold uppercase text-slate-400">Hourly</span>
+              <span
+                className="text-xs font-heading font-bold text-slate-800 tabular-nums truncate block"
+                title={equipment.hourlyRate ? formatCurrency(equipment.hourlyRate) : undefined}
+              >
+                {equipment.hourlyRate ? formatCompactRate(equipment.hourlyRate) : '—'}
+                {equipment.hourlyRate && <span className="text-2xs font-normal text-slate-500 ml-0.5">/hr</span>}
+              </span>
+            </div>
+            <div className="bg-slate-50/80 px-2.5 py-1.5 rounded-lg border border-slate-200/60 min-w-0">
+              <span className="block text-2xs font-heading font-bold uppercase text-slate-400">Monthly</span>
+              <span
+                className="text-xs font-heading font-bold text-slate-800 tabular-nums truncate block"
+                title={equipment.monthlyRate ? formatCurrency(equipment.monthlyRate) : undefined}
+              >
+                {equipment.monthlyRate ? formatCompactRate(equipment.monthlyRate) : '—'}
+                {equipment.monthlyRate && <span className="text-2xs font-normal text-slate-500 ml-0.5">/mo</span>}
+              </span>
+            </div>
           </div>
         </div>
       </div>
