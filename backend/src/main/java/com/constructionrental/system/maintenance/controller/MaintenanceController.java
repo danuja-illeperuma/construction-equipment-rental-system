@@ -105,6 +105,16 @@ public class MaintenanceController {
         return ResponseEntity.ok(ApiResponse.success(response, "Maintenance marked as COMPLETED and equipment restored to AVAILABLE"));
     }
 
+    @PatchMapping("/{id}/start-progress")
+    @PreAuthorize("hasAnyRole('STAFF', 'ADMIN')")
+    public ResponseEntity<ApiResponse<MaintenanceResponse>> startProgress(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        Long staffUserId = principal != null ? principal.getId() : 1L;
+        MaintenanceResponse response = maintenanceService.startMaintenanceProgress(id, staffUserId);
+        return ResponseEntity.ok(ApiResponse.success(response, "Maintenance is now IN PROGRESS. Equipment status set to MAINTENANCE and payment handled by company."));
+    }
+
     @PatchMapping("/{id}/mark-paid")
     @PreAuthorize("hasAnyRole('STAFF', 'ADMIN')")
     public ResponseEntity<ApiResponse<MaintenanceResponse>> markAsPaid(

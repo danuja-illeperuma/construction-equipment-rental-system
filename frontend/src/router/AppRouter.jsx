@@ -42,6 +42,7 @@ import { DamageReports } from '../modules/returns/pages/DamageReports';
 
 // Maintenance
 import { MaintenanceList } from '../modules/maintenance/pages/MaintenanceList';
+import { MaintenanceSchedule } from '../modules/maintenance/pages/MaintenanceSchedule';
 
 // Reports & Audit
 import { ReportsDashboard } from '../modules/reports/pages/ReportsDashboard';
@@ -89,6 +90,7 @@ export const AppRouter = () => {
           <Route path="/damage" element={<DamageReports />} />
           <Route path="/damage-reports" element={<DamageReports />} />
           <Route path="/maintenance" element={<MaintenanceList />} />
+          <Route path="/maintenance/schedule" element={<MaintenanceSchedule />} />
         </Route>
 
         {/* Management Routes: Staff & Admin */}

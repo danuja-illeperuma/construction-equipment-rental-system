@@ -32,7 +32,7 @@ public class MaintenanceRepository {
 
     public List<MaintenanceResponse> findAll(String status, Long equipmentId) {
         StringBuilder sql = new StringBuilder("""
-            SELECT m.maintenance_id, m.equipment_id, e.equipment_code, e.equipment_name,
+            SELECT m.maintenance_id, m.equipment_id, e.equipment_code, e.equipment_name, e.status AS equipment_status,
                    m.maintenance_type, m.description, m.maintenance_cost, m.maintenance_date,
                    m.next_maintenance_date, m.status, m.notes, m.recorded_by,
                    u.full_name AS recorded_by_name, m.created_at,
@@ -65,7 +65,7 @@ public class MaintenanceRepository {
 
     public Optional<MaintenanceResponse> findById(Long id) {
         String sql = """
-            SELECT m.maintenance_id, m.equipment_id, e.equipment_code, e.equipment_name,
+            SELECT m.maintenance_id, m.equipment_id, e.equipment_code, e.equipment_name, e.status AS equipment_status,
                    m.maintenance_type, m.description, m.maintenance_cost, m.maintenance_date,
                    m.next_maintenance_date, m.status, m.notes, m.recorded_by,
                    u.full_name AS recorded_by_name, m.created_at,
@@ -103,13 +103,22 @@ public class MaintenanceRepository {
             ps.setLong(8, recordedBy != null ? recordedBy : 1L);
             return ps;
         }, kh);
-        jdbcTemplate.update("UPDATE equipment SET status = 'MAINTENANCE' WHERE equipment_id = ?", request.getEquipmentId());
+        // Only transition equipment to MAINTENANCE immediately if maintenance date is today or in the past (e.g. urgent repair).
+        // For future scheduled dates (> today), equipment stays AVAILABLE.
+        // On the scheduled service date at 02:00 AM, MySQL scheduled event `evt_daily_maintenance_status_check`
+        // automatically transitions the equipment status to MAINTENANCE.
+        if (!request.getMaintenanceDate().isAfter(LocalDate.now())) {
+            jdbcTemplate.update("UPDATE equipment SET status = 'MAINTENANCE' WHERE equipment_id = ?", request.getEquipmentId());
+        }
         Long maintenanceId = kh.getKey() != null ? kh.getKey().longValue() : null;
 
         // Apply customer attribution and payment status
         if (maintenanceId != null) {
             boolean isPaid = false;
-            if (request.getIsPaid() != null) {
+            if (request.getCustomerId() == null) {
+                // If not billed to a customer, it is internal fleet maintenance handled by the company
+                isPaid = true;
+            } else if (request.getIsPaid() != null) {
                 isPaid = request.getIsPaid();
             }
             jdbcTemplate.update(
@@ -121,6 +130,18 @@ public class MaintenanceRepository {
             );
         }
         return maintenanceId;
+    }
+
+    public void startProgress(Long id, String notes) {
+        String sql = """
+            UPDATE maintenance_records
+            SET notes = ?,
+                customer_id = NULL,
+                is_paid = 1,
+                paid_at = COALESCE(paid_at, NOW())
+            WHERE maintenance_id = ?
+            """;
+        jdbcTemplate.update(sql, notes, id);
     }
 
     public int update(Long id, MaintenanceRequest request) {
@@ -171,7 +192,7 @@ public class MaintenanceRepository {
 
     public List<MaintenanceResponse> findByCustomerId(Long customerId) {
         String sql = """
-            SELECT m.maintenance_id, m.equipment_id, e.equipment_code, e.equipment_name,
+            SELECT m.maintenance_id, m.equipment_id, e.equipment_code, e.equipment_name, e.status AS equipment_status,
                    m.maintenance_type, m.description, m.maintenance_cost, m.maintenance_date,
                    m.next_maintenance_date, m.status, m.notes, m.recorded_by,
                    u.full_name AS recorded_by_name, m.created_at,

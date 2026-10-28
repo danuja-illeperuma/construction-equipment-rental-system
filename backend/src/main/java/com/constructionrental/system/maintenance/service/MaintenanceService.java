@@ -93,6 +93,28 @@ public class MaintenanceService {
         return getMaintenanceById(id);
     }
 
+    @Transactional
+    public MaintenanceResponse startMaintenanceProgress(Long id, Long staffUserId) {
+        MaintenanceResponse maintenance = getMaintenanceById(id);
+
+        // 1. Set equipment status to MAINTENANCE using Member 2's stored procedure sp_update_equipment_status
+        equipmentRepository.updateStatus(maintenance.getEquipmentId(), "MAINTENANCE");
+
+        // 2. Update maintenance_records: set in-progress notes and mark handled by company
+        String existingNotes = maintenance.getNotes() != null ? maintenance.getNotes() : "";
+        String updatedNotes = existingNotes.contains("[IN_PROGRESS]")
+                ? existingNotes
+                : ("[IN_PROGRESS] Maintenance in progress in workshop. " + existingNotes).trim();
+
+        maintenanceRepository.startProgress(id, updatedNotes);
+
+        // 3. Audit log action
+        auditService.logAction(staffUserId, "START_MAINTENANCE_PROGRESS", "maintenance_records", id,
+                "Started maintenance work for equipment ID " + maintenance.getEquipmentId() + ". Payment handled by company.");
+
+        return getMaintenanceById(id);
+    }
+
     /**
      * Retrieves workshop dashboard summary using MySQL View `v_equipment_maintenance_summary`.
      */

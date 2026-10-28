@@ -26,6 +26,14 @@ export const CustomerList = () => {
     { header: 'Email', accessor: 'email' },
     { header: 'Address', accessor: 'address' },
     {
+      header: 'Total Bookings',
+      render: (row) => (
+        <span className="font-mono font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200 text-xs">
+          {row.totalBookings ?? 0}
+        </span>
+      ),
+    },
+    {
       header: 'Registered',
       render: (row) => formatDateTime(row.createdAt),
     },

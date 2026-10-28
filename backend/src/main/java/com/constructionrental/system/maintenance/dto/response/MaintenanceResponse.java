@@ -24,6 +24,7 @@ public class MaintenanceResponse {
     private String customerPhone;
     private Boolean isPaid;
     private LocalDateTime paidAt;
+    private String equipmentStatus;
 
     public MaintenanceResponse() {}
 
@@ -212,5 +213,13 @@ public class MaintenanceResponse {
 
     public void setPaidAt(LocalDateTime paidAt) {
         this.paidAt = paidAt;
+    }
+
+    public String getEquipmentStatus() {
+        return equipmentStatus;
+    }
+
+    public void setEquipmentStatus(String equipmentStatus) {
+        this.equipmentStatus = equipmentStatus;
     }
 }

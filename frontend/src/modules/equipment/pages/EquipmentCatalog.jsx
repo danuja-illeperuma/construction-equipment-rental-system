@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { equipmentApi } from '../api/equipmentApi';
 import { categoryApi } from '../api/categoryApi';
-import { formatCurrency } from '../../../utils/formatters';
+import { formatCurrency, formatCompactRate } from '../../../utils/formatters';
 import { getEquipmentImage, handleImageError } from '../../../utils/equipmentImages';
 import { BRAND } from '../../../utils/constants';
 import { StatusBadge } from '../../../components/common/StatusBadge';
@@ -268,7 +268,7 @@ export const EquipmentCatalog = () => {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
           {filteredEquipment.map((eq) => {
             const machineImg = getEquipmentImage(eq);
             const isAvailable = eq.status === 'AVAILABLE';
@@ -345,24 +345,49 @@ export const EquipmentCatalog = () => {
 
                   {/* Rates Breakdown */}
                   <div>
-                    <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t border-[#DFE8F0]">
-                      <div className="bg-[#F5F9FC] p-2 rounded-lg border border-[#DFE8F0]">
-                        <span className="block text-3xs text-[#657786] uppercase font-heading font-bold tracking-wider">Hourly</span>
-                        <span className="text-xs font-heading font-bold text-[#263746] tabular-nums">
-                          {formatCurrency(eq.hourlyRate)}
+                    <div className="pt-3 border-t border-[#DFE8F0] space-y-2">
+                      {/* Featured Daily Rate */}
+                      <div className="bg-[#E8F2FA] px-3 py-2 rounded-xl border border-[#A4D0F2] flex items-center justify-between">
+                        <span className="text-3xs uppercase font-heading font-extrabold tracking-wider text-[#2473B5]">
+                          Daily Hire
                         </span>
+                        <div className="text-right min-w-0">
+                          <span
+                            className="text-sm font-heading font-black text-[#263746] tabular-nums"
+                            title={formatCurrency(eq.dailyRate)}
+                          >
+                            {formatCompactRate(eq.dailyRate)}
+                          </span>
+                          <span className="text-3xs text-[#657786] font-medium ml-1">/day</span>
+                        </div>
                       </div>
-                      <div className="bg-[#E8F2FA] p-2 rounded-lg border border-[#A4D0F2]">
-                        <span className="block text-3xs text-[#368BD1] uppercase font-heading font-bold tracking-wider">Daily Rate</span>
-                        <span className="text-xs font-heading font-black text-[#263746] tabular-nums">
-                          {formatCurrency(eq.dailyRate)}
-                        </span>
-                      </div>
-                      <div className="bg-[#F5F9FC] p-2 rounded-lg border border-[#DFE8F0]">
-                        <span className="block text-3xs text-[#657786] uppercase font-heading font-bold tracking-wider">Monthly</span>
-                        <span className="text-xs font-heading font-bold text-[#263746] tabular-nums">
-                          {formatCurrency(eq.monthlyRate)}
-                        </span>
+
+                      {/* Secondary Rates (Hourly & Monthly) */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-[#F5F9FC] px-2.5 py-1.5 rounded-lg border border-[#DFE8F0] min-w-0">
+                          <span className="block text-3xs text-[#657786] uppercase font-heading font-bold tracking-wider">
+                            Hourly
+                          </span>
+                          <span
+                            className="text-xs font-heading font-bold text-[#263746] tabular-nums truncate block"
+                            title={formatCurrency(eq.hourlyRate)}
+                          >
+                            {formatCompactRate(eq.hourlyRate)}
+                            <span className="text-3xs font-normal text-[#657786] ml-0.5">/hr</span>
+                          </span>
+                        </div>
+                        <div className="bg-[#F5F9FC] px-2.5 py-1.5 rounded-lg border border-[#DFE8F0] min-w-0">
+                          <span className="block text-3xs text-[#657786] uppercase font-heading font-bold tracking-wider">
+                            Monthly
+                          </span>
+                          <span
+                            className="text-xs font-heading font-bold text-[#263746] tabular-nums truncate block"
+                            title={formatCurrency(eq.monthlyRate)}
+                          >
+                            {formatCompactRate(eq.monthlyRate)}
+                            <span className="text-3xs font-normal text-[#657786] ml-0.5">/mo</span>
+                          </span>
+                        </div>
                       </div>
                     </div>
 

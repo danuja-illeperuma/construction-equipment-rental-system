@@ -29,6 +29,11 @@ public class PaymentRowMapper implements RowMapper<PaymentResponse> {
             }
         } catch (SQLException ignored) {}
 
+        String customerName = null;
+        try {
+            customerName = rs.getString("customer_name");
+        } catch (SQLException ignored) {}
+
         String rentalStatus = null;
         try {
             rentalStatus = rs.getString("rental_status");
@@ -38,6 +43,7 @@ public class PaymentRowMapper implements RowMapper<PaymentResponse> {
                 rs.getLong("payment_id"),
                 rs.getLong("rental_id"),
                 customerId,
+                customerName,
                 bookingReference,
                 rs.getBigDecimal("amount"),
                 rs.getString("payment_method"),
