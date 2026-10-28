@@ -13,19 +13,19 @@ An enterprise-grade, full-stack multi-tier web application engineered for commer
 ---
 
 ## 📑 Table of Contents
-1. [Executive Summary & Architecture](#1-executive-summary--architecture)
+1. [System Architecture & Overview](#1-system-architecture--overview)
 2. [Technology Stack](#2-technology-stack)
 3. [User Roles & Functional Portals](#3-user-roles--functional-portals)
 4. [Master 5-Member Workload & Object Matrix](#4-master-5-member-workload--object-matrix)
-5. [In-Depth Member Module Breakdown](#5-in-depth-member-module-breakdown)
-   - [Member 1: User & Customer Management](#member-1-user--customer-management-module)
-   - [Member 2: Equipment Fleet & Pricing Management](#member-2-equipment-fleet--pricing-management-module)
-   - [Member 3: Rental Operations & Availability Engine](#member-3-rental-operations--availability-engine-module)
-   - [Member 4: Payments, Returns & Damage Inspection](#member-4-payments-returns--damage-inspection-module)
-   - [Member 5: Maintenance Management & System Analytics](#member-5-maintenance-management--system-analytics-module)
-6. [Core Database Transaction & ACID Defense](#6-core-database-transaction--acid-defense)
+5. [Authoritative Member-by-Member Database Objects](#5-authoritative-member-by-member-database-objects)
+   - [Member 1: User & Customer Management](#section-1-member-1---user--customer-management)
+   - [Member 2: Equipment Fleet & Category Management](#section-2-member-2---equipment-fleet--category-management)
+   - [Member 3: Rental & Availability](#section-3-member-3---rental--availability)
+   - [Member 4: Payments, Returns & Damage Inspection](#section-4-member-4---payments-returns--damage-inspection)
+   - [Member 5: Maintenance Management, Reports & Audit Logs](#section-5-member-5---maintenance-management-reports--audit-logs)
+6. [Core Database Transaction: Payment Settlement (ACID Defense)](#6-core-database-transaction-payment-settlement-acid-defense)
 7. [Unique MySQL 8 Feature: Stored Generated Column](#7-unique-mysql-8-feature-stored-generated-column)
-8. [Enforced Business Rules & Safety Safeguards](#8-enforced-business-rules--safety-safeguards)
+8. [Enforced Business Rules & Safeguards](#8-enforced-business-rules--safeguards)
 9. [REST API Endpoint Catalog](#9-rest-api-endpoint-catalog)
 10. [Step-by-Step Installation & Setup](#10-step-by-step-installation--setup)
 11. [Environment Variable Configuration](#11-environment-variable-configuration)
@@ -35,7 +35,7 @@ An enterprise-grade, full-stack multi-tier web application engineered for commer
 
 ---
 
-## 1. Executive Summary & Architecture
+## 1. System Architecture & Overview
 
 **CERMS** bridges heavy machinery plant hire companies, field contractors, and depot operations into a unified real-time management platform. Built with a high-performance **Spring Boot 3 (Java 21)** REST API backend using **Spring JDBC (`JdbcTemplate`)** and a responsive **React 18 + Vite** frontend styled with **Tailwind CSS**.
 
@@ -58,7 +58,7 @@ The database architecture is powered by **MySQL 8.4 Enterprise** (hosted on Aive
 ┌───────────────────────────────────▼────────────────────────────────────┐
 │                    MySQL 8.4 Enterprise Database                       │
 │   ├── 5 Relational Domain Modules (Customers, Fleet, Rentals, etc.)    │
-│   ├── 5 Views | 5 Functions | 5 Procedures | 5 Triggers                │
+│   ├── 5 Views | 5 Functions | 7 Procedures | 5 Triggers                │
 │   ├── 5 Composite Indexes | 5 Scheduled Background Events              │
 │   └── Multi-Table ACID Transactions & Stored Generated Columns         │
 └────────────────────────────────────────────────────────────────────────┘
@@ -116,629 +116,483 @@ Strictly adhering to academic syllabus distribution (ICT3222 Advanced Database S
 
 ---
 
-## 5. In-Depth Member Module Breakdown
+## 5. Authoritative Member-by-Member Database Objects
+*(Exact verbatim definitions from `database/all_5_members_database_objects.sql`)*
 
 ---
 
-### Member 1: User & Customer Management Module
+### SECTION 1: MEMBER 1 - USER & CUSTOMER MANAGEMENT
 - **SQL Script:** `database/member1_user_customer.sql`
 - **Domain Tables:** `customers`, `users`, `audit_logs`
 
 #### 1. View: `view_active_customers`
-- **SQL Implementation:**
-  ```sql
-  CREATE OR REPLACE VIEW view_active_customers AS
-  SELECT 
-      c.customer_id, c.customer_code, c.name, c.email, 
-      c.phone, c.nic_passport, c.company_name, c.customer_type, 
-      c.created_at, u.user_id, u.role
-  FROM customers c
-  LEFT JOIN users u ON c.customer_id = u.customer_id
-  WHERE c.is_active = 1;
-  ```
+```sql
+CREATE VIEW view_active_customers AS
+SELECT 
+    customer_id,
+    customer_type,
+    name,
+    nic_or_br_number,
+    phone,
+    email,
+    address,
+    created_at
+FROM customers
+WHERE is_active = 1;
+```
 - **Backend Caller:** `CustomerRepository.java` (`findAllActive()`) mapped to `GET /api/v1/customers`.
-- **Frontend Effect:** Populates the active client ledger in `UsersList.jsx` and the client selector in `RentalBooking.jsx`. Password hashes are excluded for security.
+- **Frontend Effect:** Populates the active client ledger in `UsersList.jsx` and the client selector in `RentalBooking.jsx`.
 
-#### 2. User-Defined Function: `fn_customer_booking_count(p_customer_id)`
-- **SQL Implementation:**
-  ```sql
-  CREATE FUNCTION fn_customer_booking_count(p_customer_id BIGINT)
-  RETURNS INT DETERMINISTIC READS SQL DATA
-  BEGIN
-      DECLARE v_count INT;
-      SELECT COUNT(*) INTO v_count
-      FROM rentals
-      WHERE customer_id = p_customer_id
-        AND status NOT IN ('CANCELLED', 'EXPIRED');
-      RETURN IFNULL(v_count, 0);
-  END;
-  ```
+#### 2. Scalar Function: `fn_customer_booking_count`
+```sql
+DELIMITER $$
+CREATE FUNCTION fn_customer_booking_count(p_customer_id BIGINT)
+RETURNS INT
+DETERMINISTIC
+READS SQL DATA
+BEGIN
+    DECLARE v_count INT DEFAULT 0;
+    SELECT COUNT(*) INTO v_count
+    FROM rentals
+    WHERE customer_id = p_customer_id
+      AND status NOT IN ('CANCELLED', 'EXPIRED');
+    RETURN v_count;
+END $$
+DELIMITER ;
+```
 - **Backend Caller:** `CustomerRepository.java` via `SELECT fn_customer_booking_count(?)`.
-- **Frontend Effect:** Renders the "Total Bookings" badge on the client profile card in `CustomerProfile.jsx`.
+- **Frontend Effect:** Displays the "Total Bookings" metric badge on the client profile card in `CustomerProfile.jsx`.
 
-#### 3. Stored Procedure: `sp_toggle_customer_active(...)`
-- **SQL Implementation:**
-  ```sql
-  CREATE PROCEDURE sp_toggle_customer_active(
-      IN  p_customer_id BIGINT,
-      IN  p_is_active   TINYINT(1),
-      OUT p_success     TINYINT(1),
-      OUT p_message     VARCHAR(255)
-  )
-  BEGIN
-      DECLARE v_active_rentals INT DEFAULT 0;
-      IF p_is_active = 0 THEN
-          SELECT COUNT(*) INTO v_active_rentals
-          FROM rentals
-          WHERE customer_id = p_customer_id AND status IN ('CONFIRMED', 'ACTIVE');
-          
-          IF v_active_rentals > 0 THEN
-              SET p_success = 0;
-              SET p_message = 'Cannot deactivate customer with ongoing active rentals.';
-          ELSE
-              UPDATE customers SET is_active = 0 WHERE customer_id = p_customer_id;
-              UPDATE users SET is_active = 0 WHERE customer_id = p_customer_id;
-              SET p_success = 1;
-              SET p_message = 'Customer account deactivated successfully.';
-          END IF;
-      ELSE
-          UPDATE customers SET is_active = 1 WHERE customer_id = p_customer_id;
-          UPDATE users SET is_active = 1 WHERE customer_id = p_customer_id;
-          SET p_success = 1;
-          SET p_message = 'Customer account activated successfully.';
-      END IF;
-  END;
-  ```
+#### 3. Stored Procedure: `sp_toggle_customer_active`
+```sql
+DELIMITER $$
+CREATE PROCEDURE sp_toggle_customer_active(
+    IN  p_customer_id BIGINT,
+    IN  p_is_active   BOOLEAN,
+    OUT p_success     BOOLEAN,
+    OUT p_message     VARCHAR(255)
+)
+BEGIN
+    DECLARE v_active_rentals INT DEFAULT 0;
+    IF p_is_active = FALSE THEN
+        SELECT COUNT(*) INTO v_active_rentals
+        FROM rentals
+        WHERE customer_id = p_customer_id
+          AND status IN ('CONFIRMED', 'ACTIVE');
+        IF v_active_rentals > 0 THEN
+            SET p_success = FALSE;
+            SET p_message = 'Cannot deactivate customer with ongoing active rentals';
+        ELSE
+            UPDATE customers SET is_active = p_is_active WHERE customer_id = p_customer_id;
+            SET p_success = TRUE;
+            SET p_message = 'Customer deactivated successfully';
+        END IF;
+    ELSE
+        UPDATE customers SET is_active = p_is_active WHERE customer_id = p_customer_id;
+        SET p_success = TRUE;
+        SET p_message = 'Customer activated successfully';
+    END IF;
+END $$
+DELIMITER ;
+```
 - **Backend Caller:** `CustomerRepository.java` on `PATCH /api/v1/customers/{id}/status`.
-- **Frontend Effect:** Triggered when the admin toggles a user switch in `UsersList.jsx`. Deactivation is rejected if equipment is on-site.
+- **Frontend Effect:** Triggered when the administrator flips the activation switch in `UsersList.jsx`. If a customer currently has machines on-site, deactivation is safely rejected.
 
 #### 4. Database Trigger: `trg_validate_customer_email`
-- **SQL Implementation:**
-  ```sql
-  CREATE TRIGGER trg_validate_customer_email
-  BEFORE INSERT ON customers
-  FOR EACH ROW
-  BEGIN
-      IF NEW.email NOT REGEXP '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$' THEN
-          SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid customer email syntax.';
-      END IF;
-      IF NEW.name IS NULL OR TRIM(NEW.name) = '' THEN
-          SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Customer name cannot be blank.';
-      END IF;
-  END;
-  ```
-- **Backend Caller:** Fires automatically during `POST /api/v1/auth/register`.
-- **Frontend Effect:** Prevents corrupt records during user registration in `Register.jsx`.
+```sql
+DELIMITER $$
+CREATE TRIGGER trg_validate_customer_email
+BEFORE INSERT ON customers
+FOR EACH ROW
+BEGIN
+    IF NEW.name IS NULL OR TRIM(NEW.name) = '' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Customer name cannot be empty';
+    END IF;
+    IF NEW.phone IS NULL OR TRIM(NEW.phone) = '' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Customer phone cannot be empty';
+    END IF;
+    IF NEW.email NOT LIKE '%@%.%' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid email address format';
+    END IF;
+END $$
+DELIMITER ;
+```
+- **Backend Caller:** Fires automatically during `CustomerRepository.save()` on `POST /api/v1/auth/register`.
+- **Frontend Effect:** Protects user registration in `Register.jsx` from blank names, blank phones, and corrupt email addresses.
 
 #### 5. Custom Composite Index: `idx_customers_type_active`
-- **SQL Implementation:**
-  ```sql
-  CREATE INDEX idx_customers_type_active ON customers (is_active, customer_type);
-  ```
-- **Leftmost Prefix Rationale:** Customer lookup queries filter first by `is_active = 1` and second by `customer_type = 'INDIVIDUAL' | 'COMPANY' | 'CONTRACTOR'`.
-- **Verification:**
+```sql
+CREATE INDEX idx_customers_type_active ON customers (is_active, customer_type);
+```
+- **Leftmost Prefix Rationale:** Customer lookup queries always filter first by `is_active = 1` and second by `customer_type = 'INDIVIDUAL' | 'COMPANY' | 'CONTRACTOR'`.
+- **EXPLAIN Verification:**
   ```sql
   EXPLAIN SELECT customer_id, name, email FROM customers WHERE is_active = 1 AND customer_type = 'CONTRACTOR';
   ```
 
 #### 6. Scheduled Event: `evt_daily_customer_count_log`
-- **SQL Implementation:**
-  ```sql
-  CREATE EVENT evt_daily_customer_count_log
-  ON SCHEDULE EVERY 1 DAY
-  STARTS '2026-10-01 00:00:00'
-  DO
-  BEGIN
-      INSERT INTO audit_logs (action, details, created_at)
-      SELECT 'CUSTOMER_METRICS', 
-             CONCAT('Active customer volume snapshot: ', COUNT(*)), 
-             NOW()
-      FROM customers WHERE is_active = 1;
-  END;
-  ```
-- **Frontend Effect:** Automatically populates the system audit trail visible in `AuditLogs.jsx`.
+```sql
+DELIMITER $$
+CREATE EVENT evt_daily_customer_count_log
+ON SCHEDULE EVERY 1 DAY
+STARTS (CURRENT_DATE + INTERVAL 1 DAY)
+DO
+BEGIN
+    DECLARE v_active_count INT;
+    DECLARE v_admin_id BIGINT;
+    SELECT user_id INTO v_admin_id FROM users WHERE role = 'ADMIN' LIMIT 1;
+    SELECT COUNT(*) INTO v_active_count FROM customers WHERE is_active = 1;
+    IF v_admin_id IS NOT NULL THEN
+        INSERT INTO audit_logs (user_id, action, table_name, record_id, description, created_at)
+        VALUES (v_admin_id, 'DAILY_AUDIT', 'customers', 0, CONCAT('Active customers count: ', v_active_count), NOW());
+    END IF;
+END $$
+DELIMITER ;
+```
+- **Frontend Effect:** Populates the system telemetry timeline in `AuditLogs.jsx`.
 
 ---
 
-### Member 2: Equipment Fleet & Pricing Management Module
+### SECTION 2: MEMBER 2 - EQUIPMENT FLEET & CATEGORY MANAGEMENT
 - **SQL Script:** `database/member2_equipment_fleet.sql`
 - **Domain Tables:** `equipment`, `equipment_categories`
 
 #### 1. View: `view_available_equipment`
-- **SQL Implementation:**
-  ```sql
-  CREATE OR REPLACE VIEW view_available_equipment AS
-  SELECT 
-      e.equipment_id, e.equipment_code, e.equipment_name, e.brand, e.model,
-      e.hourly_rate, e.daily_rate, e.monthly_rate, e.security_deposit,
-      e.location, e.status, c.category_name
-  FROM equipment e
-  JOIN equipment_categories c ON e.category_id = c.category_id
-  WHERE e.is_active = 1 AND e.status = 'AVAILABLE';
-  ```
+```sql
+CREATE VIEW view_available_equipment AS
+SELECT 
+    e.equipment_id,
+    e.equipment_code,
+    e.equipment_name,
+    c.category_name,
+    e.daily_rate,
+    e.hourly_rate,
+    e.monthly_rate,
+    e.status
+FROM equipment e
+JOIN equipment_categories c ON e.category_id = c.category_id
+WHERE e.is_active = 1 
+  AND e.status = 'AVAILABLE';
+```
 - **Backend Caller:** `EquipmentRepository.java` (`findAvailableCatalog()`) on `GET /api/v1/equipment/catalog`.
-- **Frontend Effect:** Renders available machines on `EquipmentCatalog.jsx`. Machines in maintenance or currently hired are excluded.
+- **Frontend Effect:** Renders available machinery cards on `EquipmentCatalog.jsx` and the client portal. Machines under maintenance or currently on hire are automatically excluded.
 
-#### 2. User-Defined Function: `fn_get_equipment_daily_rate(p_equipment_id)`
-- **SQL Implementation:**
-  ```sql
-  CREATE FUNCTION fn_get_equipment_daily_rate(p_equipment_id BIGINT)
-  RETURNS DECIMAL(10,2) DETERMINISTIC READS SQL DATA
-  BEGIN
-      DECLARE v_rate DECIMAL(10,2);
-      SELECT daily_rate INTO v_rate FROM equipment WHERE equipment_id = p_equipment_id;
-      RETURN IFNULL(v_rate, 0.00);
-  END;
-  ```
+#### 2. Scalar Function: `fn_get_equipment_daily_rate`
+```sql
+DELIMITER $$
+CREATE FUNCTION fn_get_equipment_daily_rate(p_equipment_id BIGINT)
+RETURNS DECIMAL(10,2)
+READS SQL DATA
+DETERMINISTIC
+BEGIN
+    DECLARE v_daily_rate DECIMAL(10,2) DEFAULT 0.00;
+    SELECT daily_rate INTO v_daily_rate
+    FROM equipment
+    WHERE equipment_id = p_equipment_id;
+    RETURN v_daily_rate;
+END $$
+DELIMITER ;
+```
 - **Backend Caller:** `EquipmentRepository.java` via `SELECT fn_get_equipment_daily_rate(?)`.
-- **Frontend Effect:** Powers dynamic daily rental estimation on `EquipmentDetail.jsx` and `QuotationPage.jsx`.
+- **Frontend Effect:** Powers dynamic daily hire rate estimation on `EquipmentDetail.jsx` and `QuotationPage.jsx`.
 
-#### 3. Stored Procedure: `sp_update_equipment_status(...)`
-- **SQL Implementation:**
-  ```sql
-  CREATE PROCEDURE sp_update_equipment_status(
-      IN  p_equipment_id BIGINT,
-      IN  p_new_status   VARCHAR(20),
-      OUT p_success      TINYINT(1)
-  )
-  BEGIN
-      IF p_new_status IN ('AVAILABLE', 'RENTED', 'MAINTENANCE') THEN
-          UPDATE equipment SET status = p_new_status WHERE equipment_id = p_equipment_id;
-          SET p_success = 1;
-      ELSE
-          SET p_success = 0;
-          SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Illegal equipment status transition.';
-      END IF;
-  END;
-  ```
+#### 3. Stored Procedure: `sp_update_equipment_status`
+```sql
+DELIMITER $$
+CREATE PROCEDURE sp_update_equipment_status(
+    IN  p_equipment_id BIGINT,
+    IN  p_new_status   VARCHAR(20),
+    OUT p_success      BOOLEAN
+)
+BEGIN
+    IF p_new_status NOT IN ('AVAILABLE', 'RENTED', 'MAINTENANCE') THEN
+        SET p_success = FALSE;
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Invalid status. Allowed: AVAILABLE, RENTED, MAINTENANCE';
+    ELSE
+        UPDATE equipment 
+        SET status = p_new_status 
+        WHERE equipment_id = p_equipment_id;
+        SET p_success = TRUE;
+    END IF;
+END $$
+DELIMITER ;
+```
 - **Backend Caller:** `EquipmentRepository.java` on `PATCH /api/v1/equipment/{id}/status`.
-- **Frontend Effect:** Updates inventory badges dynamically in `EquipmentManagement.jsx`.
+- **Frontend Effect:** Updates inventory availability badges immediately across `EquipmentManagement.jsx`.
 
 #### 4. Database Trigger: `trg_validate_equipment_rates`
-- **SQL Implementation:**
-  ```sql
-  CREATE TRIGGER trg_validate_equipment_rates
-  BEFORE INSERT ON equipment
-  FOR EACH ROW
-  BEGIN
-      IF NEW.daily_rate < 0 OR NEW.hourly_rate < 0 OR NEW.monthly_rate < 0 THEN
-          SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Rental rates cannot be negative values.';
-      END IF;
-  END;
-  ```
-- **Backend Caller:** Executes automatically during `POST /api/v1/equipment`.
-- **Frontend Effect:** Guards the Add Machine form against invalid pricing input.
+```sql
+DELIMITER $$
+CREATE TRIGGER trg_validate_equipment_rates
+BEFORE INSERT ON equipment
+FOR EACH ROW
+BEGIN
+    IF NEW.daily_rate < 0 OR NEW.hourly_rate < 0 OR NEW.monthly_rate < 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Equipment rates cannot be negative';
+    END IF;
+END $$
+DELIMITER ;
+```
+- **Backend Caller:** Automatically fires during `EquipmentRepository.save()` on `POST /api/v1/equipment`.
+- **Frontend Effect:** Protects the "Add Machine" modal in `EquipmentManagement.jsx` against negative pricing.
 
 #### 5. Custom Composite Index: `idx_equipment_active_status`
-- **SQL Implementation:**
-  ```sql
-  CREATE INDEX idx_equipment_active_status ON equipment (is_active, status);
-  ```
+```sql
+CREATE INDEX idx_equipment_active_status ON equipment (is_active, status);
+```
 - **Leftmost Prefix Rationale:** Optimizes the public catalog filtering `WHERE is_active = 1 AND status = 'AVAILABLE'`.
-- **Verification:**
+- **EXPLAIN Verification:**
   ```sql
   EXPLAIN SELECT equipment_id, equipment_name, daily_rate FROM equipment WHERE is_active = 1 AND status = 'AVAILABLE';
   ```
 
 #### 6. Scheduled Event: `evt_daily_maintenance_status_check`
-- **SQL Implementation:**
-  ```sql
-  CREATE EVENT evt_daily_maintenance_status_check
-  ON SCHEDULE EVERY 1 DAY
-  STARTS '2026-10-01 02:00:00'
-  DO
-  BEGIN
-      UPDATE equipment e
-      JOIN maintenance_records m ON e.equipment_id = m.equipment_id
-      SET e.status = 'MAINTENANCE'
-      WHERE m.maintenance_date <= CURDATE()
-        AND m.status IN ('SCHEDULED', 'IN_PROGRESS')
-        AND e.status != 'MAINTENANCE';
-  END;
-  ```
-- **Frontend Effect:** Removes equipment due for service from customer booking options before depot operations begin each morning.
+```sql
+DELIMITER $$
+CREATE EVENT evt_daily_maintenance_status_check
+ON SCHEDULE EVERY 1 DAY
+STARTS (CURRENT_DATE + INTERVAL 1 DAY + INTERVAL 2 HOUR)
+DO
+BEGIN
+    UPDATE equipment e
+    JOIN maintenance_records m ON e.equipment_id = m.equipment_id
+    SET e.status = 'MAINTENANCE'
+    WHERE m.status = 'PENDING'
+      AND m.maintenance_date <= CURDATE()
+      AND e.status != 'MAINTENANCE';
+END $$
+DELIMITER ;
+```
+- **Frontend Effect:** Automatically transitions machines with maintenance due today to `MAINTENANCE`, preventing customers from booking them.
 
 ---
 
-### Member 3: Rental Operations & Availability Engine Module
+### SECTION 3: MEMBER 3 - RENTAL & AVAILABILITY
 - **SQL Script:** `database/member3_rental_booking.sql`
 - **Domain Tables:** `rentals`, `rental_items`
 
 #### 1. View: `view_active_rentals`
-- **SQL Implementation:**
-  ```sql
-  CREATE OR REPLACE VIEW view_active_rentals AS
-  SELECT 
-      r.rental_id, r.booking_reference, r.start_date, r.end_date, 
-      r.total_amount, r.status, c.name AS customer_name, c.phone AS customer_phone
-  FROM rentals r
-  JOIN customers c ON r.customer_id = c.customer_id
-  WHERE r.status IN ('CONFIRMED', 'ACTIVE');
-  ```
+```sql
+CREATE VIEW view_active_rentals AS
+SELECT 
+    r.rental_id,
+    r.booking_reference,
+    c.name AS customer_name,
+    c.phone AS customer_phone,
+    r.start_date,
+    r.end_date,
+    r.total_amount,
+    r.status
+FROM rentals r
+JOIN customers c ON r.customer_id = c.customer_id
+WHERE r.status IN ('CONFIRMED', 'ACTIVE');
+```
 - **Backend Caller:** `RentalRepository.java` (`findActiveRentals()`) on `GET /api/v1/rentals/active`.
-- **Frontend Effect:** Powers the "Active on Site" board in `RentalsManagement.jsx`.
+- **Frontend Effect:** Powers the "Active on Site" board in `RentalsManagement.jsx` and the fleet operations dashboard.
 
-#### 2. User-Defined Function: `calculate_rental_amount(...)`
-- **SQL Implementation:**
-  ```sql
-  CREATE FUNCTION calculate_rental_amount(
-      p_quantity  INT,
-      p_duration  INT,
-      p_unit_rate DECIMAL(10,2)
-  )
-  RETURNS DECIMAL(10,2) DETERMINISTIC NO SQL
-  BEGIN
-      IF p_quantity <= 0 OR p_duration <= 0 OR p_unit_rate < 0 THEN
-          RETURN 0.00;
-      END IF;
-      RETURN ROUND(p_quantity * p_duration * p_unit_rate, 2);
-  END;
-  ```
+#### 2. Scalar Function: `calculate_rental_amount`
+```sql
+DELIMITER $$
+CREATE FUNCTION calculate_rental_amount(
+    p_quantity  INT,
+    p_duration  DECIMAL(10,2),
+    p_unit_rate DECIMAL(10,2)
+)
+RETURNS DECIMAL(10,2)
+DETERMINISTIC
+NO SQL
+BEGIN
+    IF p_quantity <= 0 OR p_duration <= 0 OR p_unit_rate < 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid rental calculation parameters';
+    END IF;
+
+    RETURN ROUND(p_quantity * p_duration * p_unit_rate, 2);
+END $$
+DELIMITER ;
+```
 - **Backend Caller:** `RentalItemRepository.java` (`callCalculateRentalAmount()`).
-- **Frontend Effect:** Computes exact line-item hire charges in `QuotationPage.jsx` and `RentalBooking.jsx`.
+- **Frontend Effect:** Computes accurate line-item rental charges on `QuotationPage.jsx` and `RentalBooking.jsx`.
 
-#### 3. Stored Procedure: `sp_cancel_rental(p_rental_id)`
-- **SQL Implementation:**
-  ```sql
-  CREATE PROCEDURE sp_cancel_rental(IN p_rental_id BIGINT)
-  BEGIN
-      DECLARE v_status VARCHAR(20);
-      SELECT status INTO v_status FROM rentals WHERE rental_id = p_rental_id;
-      
-      IF v_status IN ('PENDING_PAYMENT', 'CONFIRMED') THEN
-          UPDATE rentals SET status = 'CANCELLED' WHERE rental_id = p_rental_id;
-      ELSE
-          SIGNAL SQLSTATE '45000' 
-          SET MESSAGE_TEXT = 'Cannot cancel rental that is already ACTIVE, COMPLETED, or CANCELLED.';
-      END IF;
-  END;
-  ```
+#### 3. Stored Procedure: `sp_cancel_rental`
+```sql
+DELIMITER $$
+CREATE PROCEDURE sp_cancel_rental(IN p_rental_id BIGINT)
+BEGIN
+    DECLARE v_status VARCHAR(20);
+
+    SELECT status INTO v_status FROM rentals WHERE rental_id = p_rental_id;
+
+    IF v_status NOT IN ('PENDING_PAYMENT', 'CONFIRMED') THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Only PENDING_PAYMENT or CONFIRMED rentals can be cancelled';
+    ELSE
+        UPDATE rentals SET status = 'CANCELLED' WHERE rental_id = p_rental_id;
+    END IF;
+END $$
+DELIMITER ;
+```
 - **Backend Caller:** `RentalRepository.java` on `POST /api/v1/rentals/{id}/cancel`.
-- **Frontend Effect:** Executed when customers click "Cancel Booking" on `MyRentals.jsx`. Dispatched machinery is protected from accidental cancellation.
+- **Frontend Effect:** Triggered when customers click "Cancel Rental Booking" on `MyRentals.jsx`. Prevents accidental cancellation of already dispatched machinery.
 
 #### 4. Database Trigger: `trg_rental_items_before_insert`
-- **SQL Implementation:**
-  ```sql
-  CREATE TRIGGER trg_rental_items_before_insert
-  BEFORE INSERT ON rental_items
-  FOR EACH ROW
-  BEGIN
-      IF NEW.quantity <= 0 THEN
-          SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Item quantity must be strictly greater than zero.';
-      END IF;
-      IF NEW.duration <= 0 THEN
-          SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Rental duration must be strictly greater than zero.';
-      END IF;
-  END;
-  ```
-- **Backend Caller:** Fires automatically during `POST /api/v1/rentals`.
-- **Frontend Effect:** Enforces booking data integrity at the database layer.
+```sql
+DELIMITER $$
+CREATE TRIGGER trg_rental_items_before_insert
+BEFORE INSERT ON rental_items
+FOR EACH ROW
+BEGIN
+    IF NEW.quantity <= 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Quantity must be greater than zero';
+    END IF;
+    IF NEW.duration <= 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Duration must be greater than zero';
+    END IF;
+END $$
+DELIMITER ;
+```
+- **Backend Caller:** Fires automatically during `RentalItemRepository.save()` on `POST /api/v1/rentals`.
+- **Frontend Effect:** Prevents corrupted or negative line-item bookings.
 
 #### 5. Custom Composite Index: `idx_rentals_status_dates`
-- **SQL Implementation:**
-  ```sql
-  CREATE INDEX idx_rentals_status_dates ON rentals (status, start_date, end_date);
-  ```
-- **Leftmost Prefix Rationale:** Availability conflict detection filters by active statuses (`CONFIRMED`, `ACTIVE`) across overlapping rental date windows.
-- **Verification:**
+```sql
+CREATE INDEX idx_rentals_status_dates ON rentals (status, start_date, end_date);
+```
+- **Leftmost Prefix Rationale:** The conflict detection engine checks non-terminal statuses (`PENDING_PAYMENT`, `CONFIRMED`, `ACTIVE`) across overlapping rental date windows.
+- **EXPLAIN Verification:**
   ```sql
   EXPLAIN SELECT rental_id, booking_reference FROM rentals 
   WHERE status = 'ACTIVE' AND start_date <= '2026-11-05' AND end_date >= '2026-11-01';
   ```
 
 #### 6. Scheduled Event: `evt_hourly_expire_pending_rentals`
-- **SQL Implementation:**
-  ```sql
-  CREATE EVENT evt_hourly_expire_pending_rentals
-  ON SCHEDULE EVERY 15 MINUTE
-  DO
-  BEGIN
-      UPDATE rentals
-      SET status = 'EXPIRED'
-      WHERE status = 'PENDING_PAYMENT'
-        AND NOW() > payment_deadline;
-  END;
-  ```
-- **Frontend Effect:** Overdue unpaid reservations release machinery back into available inventory automatically every 15 minutes.
+```sql
+DELIMITER $$
+CREATE EVENT evt_hourly_expire_pending_rentals
+ON SCHEDULE EVERY 15 MINUTE
+DO
+BEGIN
+    UPDATE rentals
+    SET status = 'EXPIRED'
+    WHERE status = 'PENDING_PAYMENT'
+      AND NOW() > payment_deadline;
+END $$
+DELIMITER ;
+```
+- **Frontend Effect:** Pending bookings not settled within the 15-minute window automatically transition to `EXPIRED`, releasing locked fleet machinery back to available inventory.
 
 ---
 
-### Member 4: Payments, Returns & Damage Inspection Module
+### SECTION 4: MEMBER 4 - PAYMENTS, RETURNS & DAMAGE INSPECTION
 - **SQL Script:** `database/member4_payment_returns.sql`
 - **Domain Tables:** `payments`, `equipment_returns`, `damage_reports`
 
 #### 1. View: `view_successful_payments`
-- **SQL Implementation:**
-  ```sql
-  CREATE OR REPLACE VIEW view_successful_payments AS
-  SELECT 
-      p.payment_id, p.payment_reference, p.amount, p.payment_method,
-      p.paid_at, r.booking_reference, c.name AS customer_name
-  FROM payments p
-  JOIN rentals r ON p.rental_id = r.rental_id
-  JOIN customers c ON r.customer_id = c.customer_id
-  WHERE p.payment_status = 'SUCCESS';
-  ```
-- **Backend Caller:** `PaymentRepository.java` on `GET /api/v1/payments/successful`.
-- **Frontend Effect:** Populates the revenue transaction ledger in `PaymentsList.jsx`.
-
-#### 2. User-Defined Function: `calculate_late_charge(...)`
-- **SQL Implementation:**
-  ```sql
-  CREATE FUNCTION calculate_late_charge(
-      p_rental_item_id BIGINT,
-      p_returned_at    DATETIME
-  )
-  RETURNS DECIMAL(10,2) DETERMINISTIC READS SQL DATA
-  BEGIN
-      DECLARE v_end_date DATE;
-      DECLARE v_unit_rate DECIMAL(10,2);
-      DECLARE v_days_late INT;
-      
-      SELECT r.end_date, ri.unit_rate 
-      INTO v_end_date, v_unit_rate
-      FROM rental_items ri
-      JOIN rentals r ON ri.rental_id = r.rental_id
-      WHERE ri.rental_item_id = p_rental_item_id;
-      
-      SET v_days_late = DATEDIFF(DATE(p_returned_at), v_end_date);
-      
-      IF v_days_late > 0 THEN
-          -- 1.5x daily surcharge formula
-          RETURN ROUND(v_days_late * v_unit_rate * 1.5, 2);
-      END IF;
-      RETURN 0.00;
-  END;
-  ```
-- **Backend Caller:** `ReturnRepository.java` (`callCalculateLateCharge()`).
-- **Frontend Effect:** Calculates penalty fees dynamically on `ReturnProcessing.jsx` when equipment is returned past deadline.
-
-#### 3. Stored Procedure: `sp_process_return(...)`
-- **SQL Implementation:**
-  ```sql
-  CREATE PROCEDURE sp_process_return(
-      IN  p_rental_item_id BIGINT,
-      IN  p_returned_at    DATETIME,
-      IN  p_condition      VARCHAR(20),
-      IN  p_notes          TEXT,
-      IN  p_recorded_by    BIGINT,
-      OUT p_return_id      BIGINT,
-      OUT p_late_charge    DECIMAL(10,2)
-  )
-  BEGIN
-      DECLARE v_rental_id BIGINT;
-      DECLARE v_equipment_id BIGINT;
-      DECLARE v_unreturned_count INT;
-
-      SET p_late_charge = calculate_late_charge(p_rental_item_id, p_returned_at);
-
-      INSERT INTO equipment_returns 
-          (rental_item_id, return_date, `condition`, late_fee, notes, received_by, created_at)
-      VALUES 
-          (p_rental_item_id, p_returned_at, p_condition, p_late_charge, p_notes, p_recorded_by, NOW());
-      SET p_return_id = LAST_INSERT_ID();
-
-      SELECT rental_id, equipment_id INTO v_rental_id, v_equipment_id
-      FROM rental_items WHERE rental_item_id = p_rental_item_id;
-
-      IF p_condition IN ('DAMAGED', 'MAJOR_DAMAGE') THEN
-          UPDATE equipment SET status = 'MAINTENANCE' WHERE equipment_id = v_equipment_id;
-      ELSE
-          UPDATE equipment SET status = 'AVAILABLE' WHERE equipment_id = v_equipment_id;
-      END IF;
-
-      -- Check if all items in this rental have been returned
-      SELECT COUNT(*) INTO v_unreturned_count
-      FROM rental_items ri
-      LEFT JOIN equipment_returns er ON ri.rental_item_id = er.rental_item_id
-      WHERE ri.rental_id = v_rental_id AND er.return_id IS NULL;
-
-      -- Automatically transition rental lifecycle to COMPLETED
-      IF v_unreturned_count = 0 THEN
-          UPDATE rentals SET status = 'COMPLETED' WHERE rental_id = v_rental_id;
-      END IF;
-  END;
-  ```
-- **Backend Caller:** `ReturnRepository.java` on `POST /api/v1/returns`.
-- **Frontend Effect:** Automatically advances rentals from "Active on Site" to "COMPLETED" in `ReturnProcessing.jsx`.
-
-#### 4. Database Trigger: `trg_payments_after_update`
-- **SQL Implementation:**
-  ```sql
-  CREATE TRIGGER trg_payments_after_update
-  AFTER UPDATE ON payments
-  FOR EACH ROW
-  BEGIN
-      IF NEW.payment_status = 'SUCCESS' AND OLD.payment_status != 'SUCCESS' THEN
-          UPDATE rentals 
-          SET status = 'CONFIRMED'
-          WHERE rental_id = NEW.rental_id AND status = 'PENDING_PAYMENT';
-      END IF;
-  END;
-  ```
-- **Backend Caller:** Fires automatically when PayHere confirms payment settlement.
-- **Frontend Effect:** Immediately changes booking status to "CONFIRMED".
-
-#### 5. Custom Composite Index: `idx_payments_status_created`
-- **SQL Implementation:**
-  ```sql
-  CREATE INDEX idx_payments_status_created ON payments (payment_status, created_at);
-  ```
-- **Leftmost Prefix Rationale:** Optimizes financial ledger queries filtering by `payment_status = 'SUCCESS'` ordered chronologically.
-- **Verification:**
-  ```sql
-  EXPLAIN SELECT payment_id, amount, paid_at FROM payments 
-  WHERE payment_status = 'SUCCESS' ORDER BY created_at DESC;
-  ```
-
-#### 6. Scheduled Event: `evt_daily_revenue_log`
-- **SQL Implementation:**
-  ```sql
-  CREATE EVENT evt_daily_revenue_log
-  ON SCHEDULE EVERY 1 DAY
-  STARTS '2026-10-01 23:59:00'
-  DO
-  BEGIN
-      INSERT INTO audit_logs (action, details, created_at)
-      SELECT 'DAILY_REVENUE_SNAPSHOT',
-             CONCAT('Revenue collected today: LKR ', IFNULL(SUM(amount), 0.00)),
-             NOW()
-      FROM payments
-      WHERE payment_status = 'SUCCESS' AND DATE(paid_at) = CURDATE();
-  END;
-  ```
-- **Frontend Effect:** Records immutable daily financial audits visible in `AuditLogs.jsx`.
-
----
-
-### Member 5: Maintenance Management & System Analytics Module
-- **SQL Script:** `database/member5_maintenance_reports.sql`
-- **Domain Tables:** `maintenance_records`, `audit_logs`
-
-#### 1. View: `v_equipment_maintenance_summary`
-- **SQL Implementation:**
-  ```sql
-  CREATE OR REPLACE VIEW v_equipment_maintenance_summary AS
-  SELECT 
-      e.equipment_id, e.equipment_code, e.equipment_name,
-      COUNT(m.maintenance_id) AS total_maintenance_jobs,
-      IFNULL(SUM(m.cost), 0.00) AS total_maintenance_expenditure,
-      MAX(m.maintenance_date) AS last_maintenance_date
-  FROM equipment e
-  LEFT JOIN maintenance_records m ON e.equipment_id = m.equipment_id
-  GROUP BY e.equipment_id, e.equipment_code, e.equipment_name;
-  ```
-- **Backend Caller:** `MaintenanceRepository.java` on `GET /api/v1/maintenance/summary`.
-- **Frontend Effect:** Populates fleet service metrics and KPIs in `MaintenanceList.jsx`.
-
-#### 2. User-Defined Function: `calculate_equipment_maintenance_cost(...)`
-- **SQL Implementation:**
-  ```sql
-  CREATE FUNCTION calculate_equipment_maintenance_cost(
-      p_equipment_id BIGINT,
-      p_start_date   DATE,
-      p_end_date     DATE
-  )
-  RETURNS DECIMAL(10,2) DETERMINISTIC READS SQL DATA
-  BEGIN
-      DECLARE v_total DECIMAL(10,2);
-      SELECT IFNULL(SUM(cost), 0.00) INTO v_total
-      FROM maintenance_records
-      WHERE equipment_id = p_equipment_id
-        AND (p_start_date IS NULL OR maintenance_date >= p_start_date)
-        AND (p_end_date IS NULL OR maintenance_date <= p_end_date);
-      RETURN v_total;
-  END;
-  ```
-- **Backend Caller:** `ReportRepository.java` on `GET /api/v1/reports/maintenance/{equipmentId}/cost`.
-- **Frontend Effect:** Displays total lifecycle repair costs on `EquipmentDetail.jsx` and financial reports.
-
-#### 3. Stored Procedure: `sp_complete_maintenance(...)`
-- **SQL Implementation:**
-  ```sql
-  CREATE PROCEDURE sp_complete_maintenance(
-      IN  p_maintenance_id BIGINT,
-      IN  p_actual_cost    DECIMAL(10,2),
-      OUT p_success        TINYINT(1)
-  )
-  BEGIN
-      DECLARE v_equipment_id BIGINT;
-      
-      SELECT equipment_id INTO v_equipment_id 
-      FROM maintenance_records WHERE maintenance_id = p_maintenance_id;
-      
-      IF v_equipment_id IS NOT NULL THEN
-          UPDATE maintenance_records 
-          SET status = 'COMPLETED',
-              cost = p_actual_cost,
-              completed_date = CURDATE()
-          WHERE maintenance_id = p_maintenance_id;
-          
-          -- Restore machine back to available inventory
-          UPDATE equipment SET status = 'AVAILABLE' WHERE equipment_id = v_equipment_id;
-          SET p_success = 1;
-      ELSE
-          SET p_success = 0;
-          SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Maintenance work order not found.';
-      END IF;
-  END;
-  ```
-- **Backend Caller:** `MaintenanceRepository.java` on `PATCH /api/v1/maintenance/{id}/complete`.
-- **Frontend Effect:** Used by technicians to complete repairs and return machines to the available catalog in `MaintenanceList.jsx`.
-
-#### 4. Database Trigger: `trg_maintenance_records_before_insert`
-- **SQL Implementation:**
-  ```sql
-  CREATE TRIGGER trg_maintenance_records_before_insert
-  BEFORE INSERT ON maintenance_records
-  FOR EACH ROW
-  BEGIN
-      IF NEW.cost < 0 THEN
-          SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Maintenance cost cannot be negative.';
-      END IF;
-  END;
-  ```
-- **Backend Caller:** Fires automatically during `POST /api/v1/maintenance`.
-- **Frontend Effect:** Validates input in the "Schedule Fleet Service" modal.
-
-#### 5. Custom Composite Index: `idx_maint_equip_status_date`
-- **SQL Implementation:**
-  ```sql
-  CREATE INDEX idx_maint_equip_status_date ON maintenance_records (equipment_id, status, maintenance_date);
-  ```
-- **Leftmost Prefix Rationale:** Accelerates maintenance job queries by machine, service state, and scheduled date.
-- **Verification:**
-  ```sql
-  EXPLAIN SELECT maintenance_id, cost FROM maintenance_records 
-  WHERE equipment_id = 1 AND status = 'SCHEDULED' ORDER BY maintenance_date ASC;
-  ```
-
-#### 6. Scheduled Event: `evt_weekly_maintenance_summary`
-- **SQL Implementation:**
-  ```sql
-  CREATE EVENT evt_weekly_maintenance_summary
-  ON SCHEDULE EVERY 1 WEEK
-  STARTS '2026-10-05 06:00:00'
-  DO
-  BEGIN
-      INSERT INTO audit_logs (action, details, created_at)
-      SELECT 'WEEKLY_MAINT_AUDIT',
-             CONCAT('7-day maintenance total: LKR ', IFNULL(SUM(cost), 0.00)),
-             NOW()
-      FROM maintenance_records
-      WHERE maintenance_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY);
-  END;
-  ```
-- **Frontend Effect:** Telemetry summary populated weekly in `AuditLogs.jsx`.
-
----
-
-## 6. Core Database Transaction & ACID Defense
-
-### 1. Business Intuition & Failure Scenario
-When a customer pays for an equipment rental, the system must update two tables atomically:
-1. `payments`: Record payment as `SUCCESS`, record transaction reference, and capture timestamp `paid_at`.
-2. `rentals`: Transition reservation status from `PENDING_PAYMENT` to `CONFIRMED`.
-
-**The Danger Without an ACID Transaction:**
-If payment is updated to `SUCCESS` (customer's bank account debited) but a network disconnection or database crash occurs before updating `rentals`:
-> **The customer was charged, but their rental booking remains `PENDING_PAYMENT` and is automatically cancelled or expired by `evt_hourly_expire_pending_rentals`!**
-
-### 2. ACID Properties Verification
-
-| ACID Property | Real-World Application in CERMS | Technical Mechanism in MySQL / InnoDB |
-| :--- | :--- | :--- |
-| **Atomicity (All-or-Nothing)** | Both `payments` (`SUCCESS`) and `rentals` (`CONFIRMED`) commit together. If any statement fails, neither occurs. | MySQL undo logs (`innodb_undo_tablespaces`) restore pre-transaction state on `ROLLBACK`. |
-| **Consistency (Integrity)** | Foreign keys (`fk_payment_rental`) and valid `ENUM` statuses are preserved. | Schema constraints and triggers enforce domain validity. |
-| **Isolation (Concurrency)** | While customer A pays, concurrent queries cannot observe partial uncommitted state (no dirty reads). | InnoDB row-level locking with default `REPEATABLE READ` isolation level. |
-| **Durability (Permanence)** | Once payment confirmation commits, it survives unexpected server crashes. | InnoDB Redo Log (`ib_logfile0`) flushes transaction log to persistent storage before returning success. |
-
-### 3. Native MySQL Stored Procedure with Transaction (`sp_process_payment_transaction`)
-Rather than relying on Java annotations, the transaction boundary is managed directly inside MySQL:
-
 ```sql
-DROP PROCEDURE IF EXISTS sp_process_payment_transaction;
+CREATE VIEW view_successful_payments AS
+SELECT 
+    p.payment_id,
+    p.transaction_reference,
+    r.booking_reference,
+    c.name AS customer_name,
+    p.amount,
+    p.payment_method,
+    p.paid_at
+FROM payments p
+JOIN rentals r ON p.rental_id = r.rental_id
+JOIN customers c ON r.customer_id = c.customer_id
+WHERE p.payment_status = 'SUCCESS';
+```
+- **Backend Caller:** `PaymentRepository.java` on `GET /api/v1/payments/successful`.
+- **Frontend Effect:** Populates the completed revenue transaction table on `PaymentsList.jsx`.
 
+#### 2. Scalar Function: `calculate_late_charge`
+```sql
+DELIMITER $$
+CREATE FUNCTION calculate_late_charge(
+    p_rental_item_id BIGINT,
+    p_returned_at    DATETIME
+)
+RETURNS DECIMAL(10,2)
+READS SQL DATA
+DETERMINISTIC
+BEGIN
+    DECLARE v_end_date DATE;
+    DECLARE v_unit_rate DECIMAL(10,2);
+    DECLARE v_days_late INT DEFAULT 0;
+    
+    SELECT r.end_date, ri.unit_rate
+    INTO v_end_date, v_unit_rate
+    FROM rental_items ri
+    JOIN rentals r ON ri.rental_id = r.rental_id
+    WHERE ri.rental_item_id = p_rental_item_id;
+    
+    IF DATE(p_returned_at) > v_end_date THEN
+        SET v_days_late = DATEDIFF(DATE(p_returned_at), v_end_date);
+        RETURN ROUND(v_days_late * v_unit_rate * 1.5, 2);
+    ELSE
+        RETURN 0.00;
+    END IF;
+END $$
+DELIMITER ;
+```
+- **Backend Caller:** `ReturnRepository.java` (`callCalculateLateCharge()`).
+- **Frontend Effect:** Displays the calculated late fee on `ReturnProcessing.jsx` when yard technicians inspect returned equipment.
+
+#### 3. Stored Procedure: `sp_process_return`
+```sql
+DELIMITER $$
+CREATE PROCEDURE sp_process_return(
+    IN  p_rental_item_id BIGINT,
+    IN  p_returned_at    DATETIME,
+    IN  p_condition      VARCHAR(20),
+    IN  p_notes          VARCHAR(500),
+    IN  p_recorded_by    BIGINT,
+    OUT p_return_id      BIGINT,
+    OUT p_late_charge    DECIMAL(10,2)
+)
+BEGIN
+    DECLARE v_equipment_id BIGINT;
+    DECLARE v_rental_id BIGINT;
+    DECLARE v_unreturned_count INT DEFAULT 0;
+    
+    SELECT equipment_id, rental_id INTO v_equipment_id, v_rental_id 
+    FROM rental_items WHERE rental_item_id = p_rental_item_id;
+    
+    SET p_late_charge = calculate_late_charge(p_rental_item_id, p_returned_at);
+    
+    INSERT INTO equipment_returns (rental_item_id, returned_at, `condition`, late_charge, notes, recorded_by, created_at)
+    VALUES (p_rental_item_id, p_returned_at, p_condition, p_late_charge, p_notes, p_recorded_by, NOW());
+    
+    SET p_return_id = LAST_INSERT_ID();
+    
+    IF p_condition = 'DAMAGED' THEN
+        UPDATE equipment SET status = 'MAINTENANCE' WHERE equipment_id = v_equipment_id;
+    ELSE
+        UPDATE equipment SET status = 'AVAILABLE' WHERE equipment_id = v_equipment_id;
+    END IF;
+
+    -- Check if all items for this rental have now been returned
+    SELECT COUNT(*) INTO v_unreturned_count
+    FROM rental_items ri
+    LEFT JOIN equipment_returns er ON ri.rental_item_id = er.rental_item_id
+    WHERE ri.rental_id = v_rental_id
+      AND er.return_id IS NULL;
+
+    -- Automatically transition rental lifecycle to COMPLETED
+    IF v_unreturned_count = 0 THEN
+        UPDATE rentals
+        SET status = 'COMPLETED'
+        WHERE rental_id = v_rental_id;
+    END IF;
+END $$
+DELIMITER ;
+```
+- **Backend Caller:** `ReturnRepository.java` on `POST /api/v1/returns`.
+- **Frontend Effect:** Automatically advances the booking from "Active on Site" to "COMPLETED" in `ReturnProcessing.jsx` when all items are returned.
+
+#### 4. Stored Procedure / Native ACID Transaction: `sp_process_payment_transaction`
+```sql
 DELIMITER $$
 CREATE PROCEDURE sp_process_payment_transaction(
     IN p_payment_id            BIGINT,
@@ -776,8 +630,223 @@ BEGIN
 END $$
 DELIMITER ;
 ```
+- **Backend Caller:** `PaymentRepository.java` (`callProcessPayment()`) on `POST /api/v1/payments`.
+- **Frontend Effect:** Atomically updates the payment ledger and switches the rental booking to `CONFIRMED`.
 
-### 4. Backend Spring Boot Caller
+#### 5. Database Trigger: `trg_payments_after_update`
+```sql
+DELIMITER $$
+CREATE TRIGGER trg_payments_after_update
+AFTER UPDATE ON payments
+FOR EACH ROW
+BEGIN
+    IF NEW.payment_status = 'SUCCESS' AND OLD.payment_status != 'SUCCESS' THEN
+        UPDATE rentals
+        SET status = 'CONFIRMED'
+        WHERE rental_id = NEW.rental_id
+          AND status = 'PENDING_PAYMENT';
+    END IF;
+END $$
+DELIMITER ;
+```
+- **Backend Caller:** Fires automatically when PayHere confirms payment settlement.
+- **Frontend Effect:** Changes booking status immediately to "CONFIRMED".
+
+#### 6. Custom Composite Index: `idx_payments_status_created`
+```sql
+CREATE INDEX idx_payments_status_created ON payments (payment_status, created_at);
+```
+- **Leftmost Prefix Rationale:** Optimizes financial ledger queries filtering by `payment_status = 'SUCCESS'` ordered chronologically.
+- **EXPLAIN Verification:**
+  ```sql
+  EXPLAIN SELECT payment_id, amount, paid_at FROM payments 
+  WHERE payment_status = 'SUCCESS' ORDER BY created_at DESC;
+  ```
+
+#### 7. Scheduled Event: `evt_daily_revenue_log`
+```sql
+DELIMITER $$
+CREATE EVENT evt_daily_revenue_log
+ON SCHEDULE EVERY 1 DAY
+STARTS (CURRENT_DATE + INTERVAL 23 HOUR + INTERVAL 59 MINUTE)
+DO
+BEGIN
+    DECLARE v_daily_total DECIMAL(10,2) DEFAULT 0.00;
+    DECLARE v_admin_id BIGINT;
+    SELECT user_id INTO v_admin_id FROM users WHERE role = 'ADMIN' LIMIT 1;
+    
+    SELECT COALESCE(SUM(amount), 0.00) INTO v_daily_total
+    FROM payments
+    WHERE payment_status = 'SUCCESS'
+      AND DATE(paid_at) = CURDATE();
+      
+    IF v_admin_id IS NOT NULL THEN
+        INSERT INTO audit_logs (user_id, action, table_name, record_id, description, created_at)
+        VALUES (v_admin_id, 'REVENUE_AUDIT', 'payments', 0, CONCAT('Daily revenue: LKR ', v_daily_total), NOW());
+    END IF;
+END $$
+DELIMITER ;
+```
+- **Frontend Effect:** Records an immutable daily financial revenue snapshot in `AuditLogs.jsx`.
+
+---
+
+### SECTION 5: MEMBER 5 - MAINTENANCE MANAGEMENT, REPORTS & AUDIT LOGS
+- **SQL Script:** `database/member5_maintenance_reports.sql`
+- **Domain Tables:** `maintenance_records`, `audit_logs`
+
+#### 1. View: `v_equipment_maintenance_summary`
+```sql
+CREATE VIEW v_equipment_maintenance_summary AS
+SELECT 
+    e.equipment_id,
+    e.equipment_code,
+    e.equipment_name,
+    c.category_name,
+    e.status AS equipment_status,
+    COUNT(m.maintenance_id) AS total_jobs,
+    COALESCE(SUM(m.maintenance_cost), 0.00) AS total_maintenance_cost,
+    MAX(m.maintenance_date) AS last_service_date
+FROM equipment e
+JOIN equipment_categories c ON e.category_id = c.category_id
+LEFT JOIN maintenance_records m ON e.equipment_id = m.equipment_id
+GROUP BY e.equipment_id, e.equipment_code, e.equipment_name, c.category_name, e.status;
+```
+- **Backend Caller:** `MaintenanceRepository.java` on `GET /api/v1/maintenance/summary`.
+- **Frontend Effect:** Populates maintenance metric cards and fleet service summaries in `MaintenanceList.jsx`.
+
+#### 2. Scalar Function: `calculate_equipment_maintenance_cost`
+```sql
+DELIMITER $$
+CREATE FUNCTION calculate_equipment_maintenance_cost(
+    p_equipment_id BIGINT,
+    p_start_date   DATE,
+    p_end_date     DATE
+)
+RETURNS DECIMAL(10,2)
+READS SQL DATA
+DETERMINISTIC
+BEGIN
+    DECLARE v_total DECIMAL(10,2) DEFAULT 0.00;
+    SELECT COALESCE(SUM(maintenance_cost), 0.00) INTO v_total
+    FROM maintenance_records
+    WHERE equipment_id = p_equipment_id
+      AND (p_start_date IS NULL OR maintenance_date >= p_start_date)
+      AND (p_end_date IS NULL OR maintenance_date <= p_end_date);
+    RETURN v_total;
+END $$
+DELIMITER ;
+```
+- **Backend Caller:** `ReportRepository.java` on `GET /api/v1/reports/maintenance/{equipmentId}/cost`.
+- **Frontend Effect:** Displays total lifecycle repair costs on `EquipmentDetail.jsx` and financial report analytics.
+
+#### 3. Stored Procedure: `sp_complete_maintenance`
+```sql
+DELIMITER $$
+CREATE PROCEDURE sp_complete_maintenance(
+    IN  p_maintenance_id BIGINT,
+    IN  p_actual_cost    DECIMAL(10,2),
+    OUT p_success        BOOLEAN
+)
+BEGIN
+    DECLARE v_equipment_id BIGINT;
+    
+    SELECT equipment_id INTO v_equipment_id 
+    FROM maintenance_records 
+    WHERE maintenance_id = p_maintenance_id;
+    
+    UPDATE maintenance_records
+    SET status = 'COMPLETED',
+        maintenance_cost = p_actual_cost
+    WHERE maintenance_id = p_maintenance_id;
+    
+    UPDATE equipment
+    SET status = 'AVAILABLE'
+    WHERE equipment_id = v_equipment_id;
+    
+    SET p_success = TRUE;
+END $$
+DELIMITER ;
+```
+- **Backend Caller:** `MaintenanceRepository.java` on `PATCH /api/v1/maintenance/{id}/complete`.
+- **Frontend Effect:** Concludes repair orders, records actual maintenance expenditure, and immediately restores machinery to `AVAILABLE` inventory.
+
+#### 4. Database Trigger: `trg_maintenance_records_before_insert`
+```sql
+DELIMITER $$
+CREATE TRIGGER trg_maintenance_records_before_insert
+BEFORE INSERT ON maintenance_records
+FOR EACH ROW
+BEGIN
+    IF NEW.maintenance_cost < 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Maintenance cost cannot be negative';
+    END IF;
+END $$
+DELIMITER ;
+```
+- **Backend Caller:** Fires automatically during `MaintenanceRepository.save()` on `POST /api/v1/maintenance`.
+- **Frontend Effect:** Guards the "Schedule Service" modal against negative cost input.
+
+#### 5. Custom Composite Index: `idx_maint_equip_status_date`
+```sql
+CREATE INDEX idx_maint_equip_status_date ON maintenance_records (equipment_id, status, maintenance_date);
+```
+- **Leftmost Prefix Rationale:** Speeds up work order queries filtering by `equipment_id` and `status` ordered by `maintenance_date`.
+- **EXPLAIN Verification:**
+  ```sql
+  EXPLAIN SELECT maintenance_id, maintenance_cost FROM maintenance_records 
+  WHERE equipment_id = 1 AND status = 'SCHEDULED' ORDER BY maintenance_date ASC;
+  ```
+
+#### 6. Scheduled Event: `evt_weekly_maintenance_summary`
+```sql
+DELIMITER $$
+CREATE EVENT evt_weekly_maintenance_summary
+ON SCHEDULE EVERY 1 WEEK
+STARTS (CURRENT_DATE + INTERVAL 1 DAY)
+DO
+BEGIN
+    DECLARE v_weekly_cost DECIMAL(10,2) DEFAULT 0.00;
+    DECLARE v_admin_id BIGINT;
+    SELECT user_id INTO v_admin_id FROM users WHERE role = 'ADMIN' LIMIT 1;
+    
+    SELECT COALESCE(SUM(maintenance_cost), 0.00) INTO v_weekly_cost
+    FROM maintenance_records
+    WHERE status = 'COMPLETED'
+      AND maintenance_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY);
+      
+    IF v_admin_id IS NOT NULL THEN
+        INSERT INTO audit_logs (user_id, action, table_name, record_id, description, created_at)
+        VALUES (v_admin_id, 'WEEKLY_MAINT_AUDIT', 'maintenance_records', 0, CONCAT('7-Day maintenance cost: LKR ', v_weekly_cost), NOW());
+    END IF;
+END $$
+DELIMITER ;
+```
+- **Frontend Effect:** Populates the weekly fleet maintenance expenditure audit in `AuditLogs.jsx`.
+
+---
+
+## 6. Core Database Transaction: Payment Settlement (ACID Defense)
+
+### 1. Business Intuition & Failure Scenario
+When a customer pays for an equipment rental, the system must update two tables atomically:
+1. `payments`: Record payment as `SUCCESS`, record transaction reference, and capture timestamp `paid_at`.
+2. `rentals`: Transition reservation status from `PENDING_PAYMENT` to `CONFIRMED`.
+
+**The Danger Without an ACID Transaction:**
+If payment is updated to `SUCCESS` (customer's bank account debited) but a network disconnection or database crash occurs before updating `rentals`:
+> **The customer was charged, but their rental booking remains `PENDING_PAYMENT` and is automatically cancelled or expired by `evt_hourly_expire_pending_rentals`!**
+
+### 2. ACID Properties Verification
+
+| ACID Property | Real-World Application in CERMS | Technical Mechanism in MySQL / InnoDB |
+| :--- | :--- | :--- |
+| **Atomicity (All-or-Nothing)** | Both `payments` (`SUCCESS`) and `rentals` (`CONFIRMED`) commit together. If any statement fails, neither occurs. | MySQL undo logs (`innodb_undo_tablespaces`) restore pre-transaction state on `ROLLBACK`. |
+| **Consistency (Integrity)** | Foreign keys (`fk_payment_rental`) and valid `ENUM` statuses are preserved. | Schema constraints and triggers enforce domain validity. |
+| **Isolation (Concurrency)** | While customer A pays, concurrent queries cannot observe partial uncommitted state (no dirty reads). | InnoDB row-level locking with default `REPEATABLE READ` isolation level. |
+| **Durability (Permanence)** | Once payment confirmation commits, it survives unexpected server crashes. | InnoDB Redo Log (`ib_logfile0`) flushes transaction log to persistent storage before returning success. |
+
+### 3. Backend Spring Boot Integration
 In `PaymentRepository.java`:
 ```java
 public void callProcessPayment(Long paymentId, String paymentStatus, String transactionReference) {
@@ -786,7 +855,7 @@ public void callProcessPayment(Long paymentId, String paymentStatus, String tran
 }
 ```
 
-### 5. Interactive MySQL Workbench Demonstration Script
+### 4. Interactive MySQL Workbench Demonstration Script
 ```sql
 -- 1. SUCCESSFUL TRANSACTION (COMMIT):
 START TRANSACTION;
@@ -842,7 +911,7 @@ LIMIT 5;
 
 ---
 
-## 8. Enforced Business Rules & Safety Safeguards
+## 8. Enforced Business Rules & Safeguards
 
 ### 1. Maintenance Liability Lock
 - **Rule:** If a customer has unpaid maintenance liabilities (e.g. incurred machinery damage), new equipment reservations are locked.
